@@ -12,8 +12,8 @@ st.set_page_config(
     layout="wide",
 )
 
-
-DATA_PATH = Path("job_featured.csv")
+BASE_DIR = Path(__file__).resolve().parent
+DATA_PATH = BASE_DIR / "../data/processed/job_featured.csv"
 
 
 @st.cache_data(show_spinner="Memuat dataset CareerPath AI...")

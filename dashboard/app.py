@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 
-DATA_PATH = Path("job_featured.csv")
+DATA_PATH = Path("../data/processed/job_featured.csv")
 
 
 @st.cache_data(show_spinner="Memuat dataset CareerPath AI...")

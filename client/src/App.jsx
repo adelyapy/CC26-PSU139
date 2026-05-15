@@ -11,7 +11,7 @@ function App() {
       setLoading(true);
 
       const res = await axios.post(
-        "http://localhost:3000/api/analyze",
+        "http://localhost:5000/api/analyze",
         {
           cv_text: cv,
         }

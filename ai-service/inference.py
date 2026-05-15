@@ -1,0 +1,188 @@
+import tensorflow as tf
+from tensorflow.keras.layers import Layer
+import pickle
+import numpy as np
+import pandas as pd
+import re
+
+
+# ── Definisi ulang semua custom class (wajib sebelum load_model) ──────────────
+
+class MyCustomDense(Layer):
+    def __init__(self, units, activation=None, **kwargs):
+        super().__init__(**kwargs)
+        self.units      = units
+        self.activation = tf.keras.activations.get(activation)
+
+    def build(self, input_shape):
+        self.W = self.add_weight(name='W', shape=(input_shape[-1], self.units), initializer='glorot_uniform', trainable=True)
+        self.b = self.add_weight(name='b', shape=(self.units,), initializer='zeros', trainable=True)
+        super().build(input_shape)
+
+    def call(self, x, training=None):
+        out = tf.matmul(x, self.W) + self.b
+        return self.activation(out) if self.activation else out
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update({'units': self.units,
+                    'activation': tf.keras.activations.serialize(self.activation)})
+        return cfg
+
+
+class MyCustomLeakyReLU(Layer):
+    def __init__(self, alpha=0.01, **kwargs):
+        super().__init__(**kwargs)
+        self.alpha = alpha
+
+    def call(self, x, training=None):
+        return tf.nn.leaky_relu(x, alpha=self.alpha)
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update({'alpha': self.alpha})
+        return cfg
+
+
+class MyCustomDropout(Layer):
+    def __init__(self, rate=0.1, **kwargs):
+        super().__init__(**kwargs)
+        self.rate = rate
+
+    def call(self, x, training=None):
+        if training:
+            return tf.nn.dropout(x, rate=self.rate)
+        return x
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update({'rate': self.rate})
+        return cfg
+
+
+class MyCustomAttention(Layer):
+    def __init__(self, num_heads=4, key_dim=32, dropout=0.1, **kwargs):
+        super().__init__(**kwargs)
+        self.num_heads = num_heads
+        self.key_dim   = key_dim
+        self.drop_rate = dropout
+        self.mha  = tf.keras.layers.MultiHeadAttention(
+            num_heads=num_heads, key_dim=key_dim, dropout=dropout)
+        self.norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+
+    def call(self, x, training=None):
+        attn = self.mha(x, x, x, training=training)
+        return self.norm(x + attn)
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update({'num_heads': self.num_heads, 'key_dim'  : self.key_dim, 'dropout'  : self.drop_rate})
+        return cfg
+
+
+class MyTransformerBlock(Layer):
+    def __init__(self, embed_dim, num_heads, ff_dim, dropout=0.1, **kwargs):
+        super().__init__(**kwargs)
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.ff_dim    = ff_dim
+        self.drop_rate = dropout
+        self.attention  = MyCustomAttention(num_heads=num_heads, key_dim=embed_dim // num_heads, dropout=dropout)
+        self.ff1        = MyCustomDense(ff_dim)
+        self.act        = MyCustomLeakyReLU(alpha=0.01)
+        self.ff2        = MyCustomDense(embed_dim)
+        self.dropout_ff = MyCustomDropout(rate=dropout)
+        self.norm       = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+
+    def call(self, x, training=None):
+        x   = self.attention(x, training=training)
+        ffn = self.ff1(x)
+        ffn = self.act(ffn)
+        ffn = self.ff2(ffn)
+        ffn = self.dropout_ff(ffn, training=training)
+        return self.norm(x + ffn)
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update({'embed_dim': self.embed_dim, 'num_heads': self.num_heads, 'ff_dim': self.ff_dim, 'dropout': self.drop_rate})
+        return cfg
+
+
+class ContrastiveLoss(tf.keras.losses.Loss):
+    def __init__(self, margin=1.0, **kwargs):
+        super().__init__(**kwargs)
+        self.margin = margin
+
+    def call(self, y_true, y_pred):
+        y_true   = tf.cast(y_true, tf.float32)
+        pos_loss = y_true * tf.square(y_pred)
+        neg_loss = (1.0 - y_true) * tf.square(tf.maximum(self.margin - y_pred, 0.0))
+        return tf.reduce_mean(pos_loss + neg_loss)
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update({'margin': self.margin})
+        return cfg
+
+
+# ── Load assets (dipanggil sekali saat startup) ───────────────────────────────
+
+def load_assets():
+    model = tf.keras.models.load_model(
+        'models/CareerPathAIModel.keras',
+        custom_objects={
+            'MyCustomDense'      : MyCustomDense,
+            'MyCustomLeakyReLU'  : MyCustomLeakyReLU,
+            'MyCustomDropout'    : MyCustomDropout,
+            'MyCustomAttention'  : MyCustomAttention,
+            'MyTransformerBlock' : MyTransformerBlock,
+            'ContrastiveLoss'    : ContrastiveLoss,
+        }
+    )
+
+    with open('models/vectorizer_config.pkl', 'rb') as f:
+        vocab_config = pickle.load(f)
+
+    vec_cv = tf.keras.layers.TextVectorization(max_tokens=vocab_config['max_tokens_cv'], output_sequence_length=vocab_config['seq_len_cv'])
+    vec_cv.set_vocabulary(vocab_config['vocab_cv'])
+    vec_job = tf.keras.layers.TextVectorization(max_tokens=vocab_config['max_tokens_job'], output_sequence_length=vocab_config['seq_len_job'])
+    vec_job.set_vocabulary(vocab_config['vocab_job'])
+    df_jobs = pd.read_csv('data/job_postings_final_cleaned.csv')
+
+    return model, vec_cv, vec_job, df_jobs
+
+
+# ── Preprocessing — identik dengan saat training ─────────────────────────────
+
+def preprocess_cv(text: str) -> str:
+    text = str(text).lower()
+    text = re.sub(r'[^a-z0-9\s]', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+# ── Fungsi predict utama ──────────────────────────────────────────────────────
+
+def predict_top_jobs(cv_text: str, model, vec_cv, vec_job, df_jobs, top_k=10):
+    clean_cv = preprocess_cv(cv_text)
+    cv_vec   = vec_cv(tf.constant([clean_cv]))
+
+    scores = []
+    for _, row in df_jobs.iterrows():
+        job_text = str(row.get('cleaned_description', ''))
+        if not job_text.strip():
+            continue
+        job_vec    = vec_job(tf.constant([job_text]))
+        similarity = float(model.get_similarity(cv_vec, job_vec).numpy()[0])
+        scores.append({
+            'job_id'           : str(row.get('job_id', '')),
+            'title'            : str(row.get('title', '')),
+            'location'         : str(row.get('location', '')),
+            'experience_level' : str(row.get('formatted_experience_level', '')),
+            'work_type'        : str(row.get('formatted_work_type', '')),
+            'application_url'  : str(row.get('application_url', '')),
+            'similarity_score' : round(similarity, 4),
+        })
+
+    scores.sort(key=lambda x: x['similarity_score'], reverse=True)
+    return scores[:top_k]

@@ -1,6 +1,11 @@
 export const analyzeCVService = async (
   cvText
 ) => {
+
+  await new Promise((resolve) =>
+    setTimeout(resolve, 60000)
+  );
+
   return {
     skills: ["React", "Node.js"],
     jobs: [

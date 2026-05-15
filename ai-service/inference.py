@@ -7,7 +7,11 @@ import re
 
 
 # ── Definisi ulang semua custom class (wajib sebelum load_model) ──────────────
-
+try:
+    register_serializable = tf.keras.saving.register_keras_serializable
+except AttributeError:
+    register_serializable = tf.keras.utils.register_keras_serializable
+@register_serializable()
 class MyCustomDense(Layer):
     def __init__(self, units, activation=None, **kwargs):
         super().__init__(**kwargs)
@@ -30,6 +34,7 @@ class MyCustomDense(Layer):
         return cfg
 
 
+@register_serializable()
 class MyCustomLeakyReLU(Layer):
     def __init__(self, alpha=0.01, **kwargs):
         super().__init__(**kwargs)
@@ -44,6 +49,7 @@ class MyCustomLeakyReLU(Layer):
         return cfg
 
 
+@register_serializable()
 class MyCustomDropout(Layer):
     def __init__(self, rate=0.1, **kwargs):
         super().__init__(**kwargs)
@@ -60,6 +66,7 @@ class MyCustomDropout(Layer):
         return cfg
 
 
+@register_serializable()
 class MyCustomAttention(Layer):
     def __init__(self, num_heads=4, key_dim=32, dropout=0.1, **kwargs):
         super().__init__(**kwargs)
@@ -76,10 +83,11 @@ class MyCustomAttention(Layer):
 
     def get_config(self):
         cfg = super().get_config()
-        cfg.update({'num_heads': self.num_heads, 'key_dim'  : self.key_dim, 'dropout'  : self.drop_rate})
+        cfg.update({'num_heads': self.num_heads, 'key_dim': self.key_dim, 'dropout': self.drop_rate})
         return cfg
 
 
+@register_serializable()
 class MyTransformerBlock(Layer):
     def __init__(self, embed_dim, num_heads, ff_dim, dropout=0.1, **kwargs):
         super().__init__(**kwargs)
@@ -108,6 +116,7 @@ class MyTransformerBlock(Layer):
         return cfg
 
 
+@register_serializable()
 class ContrastiveLoss(tf.keras.losses.Loss):
     def __init__(self, margin=1.0, **kwargs):
         super().__init__(**kwargs)
@@ -124,22 +133,94 @@ class ContrastiveLoss(tf.keras.losses.Loss):
         cfg.update({'margin': self.margin})
         return cfg
 
+# class CareerPathAIModel(tf.keras.Model):
+@register_serializable()
+class CareerPathAIModel(tf.keras.Model):
+    def __init__(self, vocab_size_cv=20000, vocab_size_job=20000, embed_dim=128, num_heads=4, ff_dim=256, num_transformer_blocks=2, proj_dim=64, dropout=0.1, **kwargs):
+        super().__init__(**kwargs)
+
+        self.embed_dim            = embed_dim
+        self.num_transformer_blocks = num_transformer_blocks
+
+        # ── CV Tower ──────────────────────────────────────────────────────────
+        self.cv_embedding = tf.keras.layers.Embedding(
+            vocab_size_cv, embed_dim, mask_zero=True, name='cv_embedding')
+        self.cv_pos_dropout = MyCustomDropout(rate=dropout, name='cv_pos_dropout')
+        self.cv_transformer_blocks = [
+            MyTransformerBlock(embed_dim, num_heads, ff_dim, dropout, name=f'cv_transformer_{i}')
+            for i in range(num_transformer_blocks)
+        ]
+        self.cv_proj  = MyCustomDense(proj_dim, name='cv_proj')
+        self.cv_act   = MyCustomLeakyReLU(alpha=0.01, name='cv_act')
+        self.cv_drop  = MyCustomDropout(rate=dropout, name='cv_drop')
+
+        # ── Job Tower ─────────────────────────────────────────────────────────
+        self.job_embedding = tf.keras.layers.Embedding(
+            vocab_size_job, embed_dim, mask_zero=True, name='job_embedding')
+        self.job_pos_dropout = MyCustomDropout(rate=dropout, name='job_pos_dropout')
+        self.job_transformer_blocks = [
+            MyTransformerBlock(embed_dim, num_heads, ff_dim, dropout, name=f'job_transformer_{i}')
+            for i in range(num_transformer_blocks)
+        ]
+        self.job_proj = MyCustomDense(proj_dim, name='job_proj')
+        self.job_act  = MyCustomLeakyReLU(alpha=0.01, name='job_act')
+        self.job_drop = MyCustomDropout(rate=dropout, name='job_drop')
+
+    def _encode_cv(self, token_ids, training=None):
+        x = self.cv_embedding(token_ids)
+        x = self.cv_pos_dropout(x, training=training)
+        for block in self.cv_transformer_blocks:
+            x = block(x, training=training)
+        x = tf.reduce_mean(x, axis=1)
+        x = self.cv_proj(x)
+        x = self.cv_act(x)
+        x = self.cv_drop(x, training=training)
+        return tf.math.l2_normalize(x, axis=-1)
+
+    def _encode_job(self, token_ids, training=None):
+        x = self.job_embedding(token_ids)
+        x = self.job_pos_dropout(x, training=training)
+        for block in self.job_transformer_blocks:
+            x = block(x, training=training)
+        x = tf.reduce_mean(x, axis=1)
+        x = self.job_proj(x)
+        x = self.job_act(x)
+        x = self.job_drop(x, training=training)
+        return tf.math.l2_normalize(x, axis=-1)
+
+    def call(self, inputs, training=None):
+        cv_ids, job_ids = inputs
+        cv_vec  = self._encode_cv(cv_ids,  training=training)
+        job_vec = self._encode_job(job_ids, training=training)
+        return tf.norm(cv_vec - job_vec, axis=-1)
+
+    def get_similarity(self, cv_ids, job_ids):
+        cv_vec  = self._encode_cv(cv_ids,  training=False)
+        job_vec = self._encode_job(job_ids, training=False)
+        return tf.reduce_sum(cv_vec * job_vec, axis=-1)
 
 # ── Load assets (dipanggil sekali saat startup) ───────────────────────────────
 
 def load_assets():
-    model = tf.keras.models.load_model(
-        'models/CareerPathAIModel.keras',
-        custom_objects={
-            'MyCustomDense'      : MyCustomDense,
-            'MyCustomLeakyReLU'  : MyCustomLeakyReLU,
-            'MyCustomDropout'    : MyCustomDropout,
-            'MyCustomAttention'  : MyCustomAttention,
-            'MyTransformerBlock' : MyTransformerBlock,
-            'ContrastiveLoss'    : ContrastiveLoss,
-        }
+    # Buat ulang model dengan config yang sama
+    model = CareerPathAIModel(
+        vocab_size_cv          = 20000,
+        vocab_size_job         = 20000,
+        embed_dim              = 128,
+        num_heads              = 4,
+        ff_dim                 = 256,
+        num_transformer_blocks = 3,
+        proj_dim               = 64,
+        dropout                = 0.1,
     )
-
+    
+    dummy_cv  = tf.zeros((1, 256),  dtype=tf.int64)
+    dummy_job = tf.zeros((1, 512), dtype=tf.int64)
+    _         = model([dummy_cv, dummy_job], training=False)
+    
+    # Load weights
+    model.load_weights('models/career_weights.weights.h5', by_name=True, skip_mismatch=True)
+    
     with open('models/vectorizer_config.pkl', 'rb') as f:
         vocab_config = pickle.load(f)
 

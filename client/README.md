@@ -1,16 +1,100 @@
-# React + Vite
+# CareerPath AI — Front-End
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Front-end CareerPath AI menggunakan:
 
-Currently, two official plugins are available:
+* React + Vite
+* Tailwind CSS
+* Axios
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Features
 
-## React Compiler
+* Upload CV PDF
+* AI Career Recommendation
+* Responsive UI
+* Upload Progress
+* Job Recommendation Result
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+# Installation
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 1. Clone Repository
+
+```bash
+git clone <repository-url>
+```
+
+---
+
+## 2. Masuk ke Folder Front-End
+
+```bash
+cd client
+```
+
+---
+
+## 3. Install Dependencies
+
+```bash
+npm install
+```
+
+---
+
+# Environment Variable
+
+Buat file `.env`
+
+```env
+VITE_API_URL=http://localhost:3000/api
+```
+
+---
+
+# Run Development Server
+
+```bash
+npm run dev
+```
+
+Server akan berjalan di:
+
+```text
+http://localhost:5173
+```
+
+---
+
+# Build Production
+
+```bash
+npm run build
+```
+
+---
+
+# Struktur Project
+
+```bash
+src/
+├── api/
+├── assets/
+├── components/
+│   ├── landing/
+│   ├── layout/
+│   ├── result/
+│   └── upload/
+├── pages/
+├── styles/
+├── App.jsx
+└── main.jsx
+```
+
+---
+
+# Team
+
+CC26-PSU139
+Coding Camp 2026
+DBS Foundation

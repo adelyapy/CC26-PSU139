@@ -1,0 +1,214 @@
+@import '@fontsource/poppins';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================
+   Base Style
+========================= */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: 'Poppins', sans-serif;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+/* =========================
+   Reusable Components
+========================= */
+@layer components {
+
+  /* Container */
+  .container-custom {
+    @apply max-w-7xl mx-auto px-6;
+  }
+
+  /* =========================
+     Primary Button
+  ========================= */
+  .primary-button {
+    @apply
+      inline-flex
+      items-center
+      justify-center
+      gap-2
+      px-7
+      py-3
+      bg-blue-600
+      text-white
+      rounded-2xl
+      font-medium
+      shadow-lg
+      transition-all
+      duration-300
+      hover:bg-blue-700
+      hover:shadow-xl
+      disabled:bg-gray-400
+      disabled:cursor-not-allowed
+
+      /* Accessibility */
+      focus-visible:outline-none
+      focus-visible:ring-4
+      focus-visible:ring-blue-300;
+  }
+
+  /* =========================
+     Secondary Button
+  ========================= */
+  .secondary-button {
+    @apply
+      inline-flex
+      items-center
+      justify-center
+      gap-2
+      px-7
+      py-3
+      bg-white
+      border
+      border-slate-200
+      text-slate-700
+      rounded-2xl
+      font-medium
+      transition-all
+      duration-300
+      hover:bg-slate-100
+
+      /* Accessibility */
+      focus-visible:outline-none
+      focus-visible:ring-4
+      focus-visible:ring-blue-200;
+  }
+
+  /* =========================
+     Card
+  ========================= */
+  .card {
+    @apply
+      bg-white
+      rounded-3xl
+      border
+      border-slate-200
+      shadow-sm
+      transition-all
+      duration-300
+      hover:shadow-xl;
+  }
+
+  /* =========================
+     Navbar Link
+  ========================= */
+  .nav-link {
+    @apply
+      text-slate-600
+      transition
+      duration-300
+      hover:text-blue-600
+
+      /* Accessibility */
+      focus-visible:outline-none
+      focus-visible:ring-2
+      focus-visible:ring-blue-500
+      rounded-lg;
+  }
+
+  /* =========================
+     Mobile Navigation Link
+  ========================= */
+  .mobile-link {
+    @apply
+      w-full
+      text-left
+      px-4
+      py-3
+      rounded-xl
+      text-slate-700
+      transition-all
+      duration-300
+      hover:bg-slate-100
+      hover:text-blue-600
+
+      /* Accessibility */
+      focus-visible:outline-none
+      focus-visible:ring-2
+      focus-visible:ring-blue-500;
+  }
+
+  /* =========================
+     Input Field
+  ========================= */
+  .input-field {
+    @apply
+      w-full
+      rounded-2xl
+      border
+      border-slate-200
+      bg-white
+      px-5
+      py-4
+      outline-none
+      transition-all
+      duration-300
+      focus:border-blue-500
+      focus:ring-4
+      focus:ring-blue-100
+
+      /* Accessibility */
+      focus-visible:outline-none;
+  }
+
+  /* =========================
+     Textarea Field
+  ========================= */
+  .textarea-field {
+    @apply
+      w-full
+      rounded-2xl
+      border
+      border-slate-200
+      bg-white
+      px-5
+      py-4
+      outline-none
+      resize-none
+      transition-all
+      duration-300
+      focus:border-blue-500
+      focus:ring-4
+      focus:ring-blue-100
+
+      /* Accessibility */
+      focus-visible:outline-none;
+  }
+
+  /* =========================
+     Upload Area
+  ========================= */
+  .upload-area {
+    @apply
+      flex
+      flex-col
+      items-center
+      justify-center
+      gap-3
+      px-6
+      py-10
+      border-2
+      border-dashed
+      border-slate-300
+      rounded-2xl
+      cursor-pointer
+      transition-all
+      duration-300
+      hover:bg-slate-100
+
+      /* Accessibility */
+      focus-visible:outline-none
+      focus-visible:ring-4
+      focus-visible:ring-blue-200;
+  }
+}

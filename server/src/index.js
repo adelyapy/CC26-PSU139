@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import analyzeRoute from "./routes/analyzeRoute.js";
+import analyzeRoutes from "./routes/analyzeRoutes.js";
 
 dotenv.config();
 
@@ -9,7 +9,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use("/api", analyzeRoute);
+app.use("/api", analyzeRoutes);
 
 app.get("/", (req, res) => {
   res.json({

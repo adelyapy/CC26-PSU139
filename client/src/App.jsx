@@ -2,8 +2,9 @@ import {
   lazy,
   Suspense,
   useState,
-  useEffect,
 } from 'react';
+
+import axios from 'axios';
 
 import {
   Routes,
@@ -64,45 +65,28 @@ const NotFoundPage = lazy(() =>
 );
 
 function App() {
-  const [results, setResults] =
-    useState(() => {
-      try {
-        const saved =
-          localStorage.getItem(
-            'career_results'
-          );
-
-        return saved
-          ? JSON.parse(saved)
-          : [];
-      } catch (error) {
-        console.error(
-          'LocalStorage Error:',
-          error
-        );
-
-        return [];
-      }
-    });
-
-  // SAVE STORAGE SAFELY
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        'career_results',
-        JSON.stringify(
-          results.slice(0, 20)
-        )
-      );
-    } catch (error) {
-      console.error(
-        'Storage Save Error:',
-        error
-      );
-    }
-  }, [results]);
-
+  const [results, setResults] = useState([]);
   const navigate = useNavigate();
+
+  const handleAnalyze = async (cv) => {
+    try {
+      const res = await axios.post(
+        'http://localhost:3000/api/analyze',
+        {
+          cv_text: cv,
+        }
+      );
+
+      setResults(
+        res.data?.recommendations || []
+      );
+
+      navigate('/results');
+    } catch (err) {
+      console.error(err);
+      alert('Error connecting to backend');
+    }
+  };
 
   return (
     <ErrorBoundary>
@@ -134,6 +118,7 @@ function App() {
             path="/analyze"
             element={
               <AnalyzePage
+                onAnalyze={handleAnalyze}
                 onSuccess={(data) => {
                   setResults(
                     data?.recommendations || []
@@ -151,8 +136,12 @@ function App() {
             element={
               <ResultsPage
                 results={results}
-                onBack={() => navigate('/')}
-                onAnalyzeNew={() => navigate('/analyze')}
+                onBack={() =>
+                  navigate('/')
+                }
+                onAnalyzeNew={() =>
+                  navigate('/analyze')
+                }
               />
             }
           />
@@ -166,7 +155,6 @@ function App() {
         </Routes>
       </Suspense>
     </ErrorBoundary>
-    
   );
 }
 

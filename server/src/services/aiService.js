@@ -1,22 +1,12 @@
-export const analyzeCVService = async (
-  cvText
-) => {
+import axios from "axios";
 
-  await new Promise((resolve) =>
-    setTimeout(resolve, 60000)
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "https://terijuky-careerpathai.hf.space";
+
+export const analyzeCVService = async (cvText) => {
+  const response = await axios.post(
+    `${AI_SERVICE_URL}/predict`,
+    { cv_text: cvText },
+    { timeout: 60000 }
   );
-
-  return {
-    skills: ["React", "Node.js"],
-    jobs: [
-      {
-        title: "Frontend Developer",
-        score: 0.92,
-      },
-      {
-        title: "Full Stack Developer",
-        score: 0.88,
-      },
-    ],
-  };
+  return response.data;
 };

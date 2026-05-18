@@ -14,7 +14,7 @@ app.add_middleware(
 )
 
 print("Loading model...")
-model, vec_cv, vec_job, df_jobs = load_assets()
+model, vec_cv, vec_job, df_jobs, job_vectors = load_assets()
 print(f"Model loaded. Total jobs: {len(df_jobs)}")
 
 
@@ -27,6 +27,7 @@ class JobRecommendation(BaseModel):
     location         : str
     experience_level : str
     work_type        : str
+    job_posting_url  : str
     application_url  : str
     similarity_score : float
 
@@ -41,7 +42,7 @@ async def predict(input: CVInput):
     if len(input.cv_text.strip()) < 50:
         raise HTTPException(status_code=400, detail="CV terlalu pendek.")
     try:
-        results = predict_top_jobs(input.cv_text, model, vec_cv, vec_job, df_jobs)
+        results = predict_top_jobs(input.cv_text, model, vec_cv, job_vectors, df_jobs)
         return {"status": "success", "total_recommendations": len(results), "recommendations": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

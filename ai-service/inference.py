@@ -11,6 +11,7 @@ try:
     register_serializable = tf.keras.saving.register_keras_serializable
 except AttributeError:
     register_serializable = tf.keras.utils.register_keras_serializable
+
 @register_serializable()
 class MyCustomDense(Layer):
     def __init__(self, units, activation=None, **kwargs):
@@ -133,13 +134,13 @@ class ContrastiveLoss(tf.keras.losses.Loss):
         cfg.update({'margin': self.margin})
         return cfg
 
-# class CareerPathAIModel(tf.keras.Model):
+
 @register_serializable()
 class CareerPathAIModel(tf.keras.Model):
     def __init__(self, vocab_size_cv=20000, vocab_size_job=20000, embed_dim=128, num_heads=4, ff_dim=256, num_transformer_blocks=2, proj_dim=64, dropout=0.1, **kwargs):
         super().__init__(**kwargs)
 
-        self.embed_dim            = embed_dim
+        self.embed_dim              = embed_dim
         self.num_transformer_blocks = num_transformer_blocks
 
         # ── CV Tower ──────────────────────────────────────────────────────────
@@ -150,9 +151,9 @@ class CareerPathAIModel(tf.keras.Model):
             MyTransformerBlock(embed_dim, num_heads, ff_dim, dropout, name=f'cv_transformer_{i}')
             for i in range(num_transformer_blocks)
         ]
-        self.cv_proj  = MyCustomDense(proj_dim, name='cv_proj')
-        self.cv_act   = MyCustomLeakyReLU(alpha=0.01, name='cv_act')
-        self.cv_drop  = MyCustomDropout(rate=dropout, name='cv_drop')
+        self.cv_proj = MyCustomDense(proj_dim, name='cv_proj')
+        self.cv_act  = MyCustomLeakyReLU(alpha=0.01, name='cv_act')
+        self.cv_drop = MyCustomDropout(rate=dropout, name='cv_drop')
 
         # ── Job Tower ─────────────────────────────────────────────────────────
         self.job_embedding = tf.keras.layers.Embedding(
@@ -199,38 +200,59 @@ class CareerPathAIModel(tf.keras.Model):
         job_vec = self._encode_job(job_ids, training=False)
         return tf.reduce_sum(cv_vec * job_vec, axis=-1)
 
+
 # ── Load assets (dipanggil sekali saat startup) ───────────────────────────────
 
 def load_assets():
-    # Buat ulang model dengan config yang sama
     model = CareerPathAIModel(
         vocab_size_cv          = 20000,
         vocab_size_job         = 20000,
         embed_dim              = 128,
         num_heads              = 4,
         ff_dim                 = 256,
-        num_transformer_blocks = 3,
+        num_transformer_blocks = 2,
         proj_dim               = 64,
         dropout                = 0.1,
     )
-    
-    dummy_cv  = tf.zeros((1, 256),  dtype=tf.int64)
+
+    dummy_cv  = tf.zeros((1, 256), dtype=tf.int64)
     dummy_job = tf.zeros((1, 512), dtype=tf.int64)
     _         = model([dummy_cv, dummy_job], training=False)
-    
-    # Load weights
+
     model.load_weights('models/career_weights.weights.h5', by_name=True, skip_mismatch=True)
-    
+
     with open('models/vectorizer_config.pkl', 'rb') as f:
         vocab_config = pickle.load(f)
 
-    vec_cv = tf.keras.layers.TextVectorization(max_tokens=vocab_config['max_tokens_cv'], output_sequence_length=vocab_config['seq_len_cv'])
+    vec_cv = tf.keras.layers.TextVectorization(
+        max_tokens=vocab_config['max_tokens_cv'],
+        output_sequence_length=vocab_config['seq_len_cv'])
     vec_cv.set_vocabulary(vocab_config['vocab_cv'])
-    vec_job = tf.keras.layers.TextVectorization(max_tokens=vocab_config['max_tokens_job'], output_sequence_length=vocab_config['seq_len_job'])
+
+    vec_job = tf.keras.layers.TextVectorization(
+        max_tokens=vocab_config['max_tokens_job'],
+        output_sequence_length=vocab_config['seq_len_job'])
     vec_job.set_vocabulary(vocab_config['vocab_job'])
+
     df_jobs = pd.read_csv('data/job_postings_final_cleaned.csv')
 
-    return model, vec_cv, vec_job, df_jobs
+    # ── Pre-compute semua job vectors saat startup ────────────────────────────
+    # Dilakukan sekali di sini, bukan setiap request
+    print("Pre-computing job vectors...")
+    job_texts        = df_jobs['cleaned_description'].fillna('').tolist()
+    BATCH_SIZE       = 64
+    job_vectors_list = []
+
+    for i in range(0, len(job_texts), BATCH_SIZE):
+        batch     = job_texts[i:i + BATCH_SIZE]
+        batch_vec = vec_job(tf.constant(batch))
+        encoded   = model._encode_job(batch_vec, training=False)
+        job_vectors_list.append(encoded.numpy())
+
+    job_vectors = np.vstack(job_vectors_list)  # shape: (total_jobs, proj_dim)
+    print(f"Job vectors ready: {job_vectors.shape}")
+
+    return model, vec_cv, vec_job, df_jobs, job_vectors
 
 
 # ── Preprocessing — identik dengan saat training ─────────────────────────────
@@ -242,28 +264,30 @@ def preprocess_cv(text: str) -> str:
     return text
 
 
-# ── Fungsi predict utama ──────────────────────────────────────────────────────
+# ── Fungsi predict utama — batch cosine similarity ───────────────────────────
 
-def predict_top_jobs(cv_text: str, model, vec_cv, vec_job, df_jobs, top_k=10):
+def predict_top_jobs(cv_text: str, model, vec_cv, job_vectors, df_jobs, top_k=10):
     clean_cv = preprocess_cv(cv_text)
-    cv_vec   = vec_cv(tf.constant([clean_cv]))
+    cv_vec   = vec_cv(tf.constant([clean_cv]))                     # (1, seq_len_cv)
+    cv_enc   = model._encode_cv(cv_vec, training=False).numpy()    # (1, proj_dim)
 
-    scores = []
-    for _, row in df_jobs.iterrows():
-        job_text = str(row.get('cleaned_description', ''))
-        if not job_text.strip():
-            continue
-        job_vec    = vec_job(tf.constant([job_text]))
-        similarity = float(model.get_similarity(cv_vec, job_vec).numpy()[0])
-        scores.append({
+    # Cosine similarity antara 1 CV vector dan semua job vectors sekaligus
+    similarities = np.dot(job_vectors, cv_enc[0])                  # (total_jobs,)
+
+    # Ambil top_k index
+    top_indices = np.argsort(similarities)[::-1][:top_k]
+
+    results = []
+    for idx in top_indices:
+        row = df_jobs.iloc[idx]
+        results.append({
             'job_id'           : str(row.get('job_id', '')),
             'title'            : str(row.get('title', '')),
             'location'         : str(row.get('location', '')),
             'experience_level' : str(row.get('formatted_experience_level', '')),
             'work_type'        : str(row.get('formatted_work_type', '')),
             'application_url'  : str(row.get('application_url', '')),
-            'similarity_score' : round(similarity, 4),
+            'similarity_score' : round(float(similarities[idx]), 4),
         })
 
-    scores.sort(key=lambda x: x['similarity_score'], reverse=True)
-    return scores[:top_k]
+    return results

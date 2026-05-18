@@ -27,6 +27,7 @@ class JobRecommendation(BaseModel):
     location         : str
     experience_level : str
     work_type        : str
+    job_posting_url  : str
     application_url  : str
     similarity_score : float
 

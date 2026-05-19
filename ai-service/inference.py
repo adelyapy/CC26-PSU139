@@ -286,6 +286,7 @@ def predict_top_jobs(cv_text: str, model, vec_cv, job_vectors, df_jobs, top_k=10
             'location'         : str(row.get('location', '')),
             'experience_level' : str(row.get('formatted_experience_level', '')),
             'work_type'        : str(row.get('formatted_work_type', '')),
+            'job_posting_url'  : str(row.get('job_posting_url', '')),
             'application_url'  : str(row.get('application_url', '')),
             'similarity_score' : round(float(similarities[idx]), 4),
         })

@@ -1,4 +1,4 @@
-import pdfParse from "pdf-parse/lib/pdf-parse.js";
+import { PDFParse } from 'pdf-parse';
 import { analyzeCVService } from "../services/aiService.js";
 import { supabase } from "../config/supabase.js";
 
@@ -8,8 +8,12 @@ export const analyzeCV = async (req, res) => {
 
     // Jika ada file PDF yang diupload
     if (req.file) {
-      const pdfData = await pdfParse(req.file.buffer);
-      cvText = pdfData.text;
+      // Menggunakan cara resmi pdf-parse versi 2.4.5
+      const parser = new PDFParse({ data: req.file.buffer });
+      const textResult = await parser.getText();
+      // Ambil properti text dari hasil method tersebut
+      cvText = textResult?.text || "";
+      await parser.destroy();
     }
     // Jika teks CV dikirim langsung (untuk testing)
     else if (req.body.cv_text) {
@@ -26,7 +30,7 @@ export const analyzeCV = async (req, res) => {
     // Simpan log ke Supabase (tidak blocking — error di sini tidak menghentikan proses)
     try {
       await supabase.from("cv_analysis_logs").insert([{
-        cv_preview: cvText.substring(0, 200),
+        cv_preview: cvText,
         created_at: new Date().toISOString(),
       }]);
     } catch (supabaseErr) {
@@ -35,7 +39,6 @@ export const analyzeCV = async (req, res) => {
 
     // Kirim ke FastAPI
     const result = await analyzeCVService(cvText);
-
     return res.json(result);
 
   } catch (error) {

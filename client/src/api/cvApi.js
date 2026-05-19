@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const API_BASE =
   import.meta.env.VITE_API_URL ||
-  'http://localhost:3000/api';
+  '/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE,
@@ -19,7 +19,7 @@ export const analyzeCV = async (
     formData.append('cv_file', file);
 
     const response = await apiClient.post(
-      '/analyze-cv',
+      '/analyze',
       formData,
       {
         headers: {
